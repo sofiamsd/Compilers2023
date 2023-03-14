@@ -1,88 +1,67 @@
 import argparse
 from string import ascii_letters, digits, whitespace
 
+
+
+
 identifier_characters = ascii_letters + "_" + digits
 
 symbols = '+-*/<>=;,:[](){}#$"!'
 
-add_chars = "+-"
-mul_chars = "*/"
-rel_chars = "<>=!"
-assignment_chars = "=",
-delimiter_chars = ";,:"
-grouping_chars = "[](){}#"
-comment_chars = "#$"
+legal_characters = identifier_characters + symbols + whitespace
+
 
 EOF = "~"
 EOL = " "
 
-class cpyCharacter(str):
-    @classmethod
-    def construct_if_legal_else_raise(cls, char, callable_error_handler):
-        char = cls(char)
-        if not char.is_legal(): 
-            callable_error_handler()
-        return char
-
-    def can_be_used_in_identifiers(self):
-        return self in identifier_characters
-    
-    def can_be_used_in_keywords(self):
-        return self in ascii_letters + '_#"'
-        
-    def is_addOperator(self): return self in add_chars
-
-    def is_mulOperator(self): return self in mul_chars
-
-    def is_relOperator(self): return self in rel_chars
-
-    def is_assignmentSymbol(self): return self in assignment_chars
-
-    def is_delimiterSymbol(self): return self in delimiter_chars
-
-    def is_groupingSymbol(self): return self in grouping_chars
-
-    def is_commentSymbol(self): return self in comment_chars
-
-    def is_hashtag(self): return self == "#"
-
-    def is_quote(self): return self == '"'
-
-    def is_dollar(self): return self == "$"
-
-    def is_EOF(self): return self == EOF
-
-    def is_legal(self):
-        return self in identifier_characters + symbols + whitespace
-    
-EOF = cpyCharacter(EOF)
-EOL = cpyCharacter(EOL)
-
 keywords = [
-    IF:="if", 
-    ELSE:="else", 
+    IF:="if",
+    ELSE:="else",
     WHILE:="while",
     RETURN:="return",
-    PRINT:="print", 
+    PRINT:="print",
     INT:="int",
-    INPUT:="input", 
-    DEF:="def", 
-    DECLARE:="#declare", 
+    INPUT:="input",
+    DEF:="def",
+    DECLARE:="#declare",
     __NAME__:="__name__",
     __MAIN__:='"__main__"'
 ]
 
+keyword_characters = ascii_letters + '_#"'
+
 def is_keyword(string): return string in keywords
 
 logical_operators = [
-    NOT:="not", 
-    OR:="or",
-    AND:="and"
+    AND:="and",
+    NOT:="not",
+    OR:="or"
 ]
 
-keywords.extend(logical_operators)
+LPAR = "("
+RPAR = ")"
+LSQB = "["
+RSQB = "]"
+LBLCK = "#{"
+RBLCK = "#}"
 
-def is_logOperator(string): return string in logical_operators
+CLN = ":"
+SMCLN = ";"
+COM = ","
+
+ASGN = "="
+
+EQLS = "=="
+
+
+add_chars = "+-"
+mul_chars = "*/"
+rel_chars = "<>=!"
+assignment_chars = ASGN
+delimiter_chars = CLN + SMCLN + COM 
+grouping_chars = LPAR + RPAR + LSQB + RSQB + LBLCK + RBLCK 
+comment_chars = "#$"
+
 
 token_families = [
     NUM:="number",
@@ -93,909 +72,8 @@ token_families = [
     REL_OP:="relOperator"
 ]
 
-class Token:
-    def __init__(self, recognized_string, family, line_number, column_number):
-        self.recognized_string = recognized_string
-        self.family = family
-        self.line_number = line_number
-        self.column_number = column_number
-        self.validate()
 
-    def validate(self): pass
 
-    def first_letter(self): return self.recognized_string[0]
-
-    def length(self): return len(self.recognized_string)
-
-    def to_grammar_symbol(self): return self.family
-
-    def is_EOFToken(self): return False
-
-class NumberToken(Token):
-    def __init__(self, recognized_string, line_number, column_number):
-        super().__init__(recognized_string, NUM, line_number, column_number)
-        
-    def validate(self):
-        num = int(self.recognized_string)
-        if abs(num) >= 2**32:
-            OutOfBoundsNumber.at(self.line_number, self.column_number, number=num)
-
-class IdentifierToken(Token):
-    def __init__(self, recognized_string, line_number, column_number):
-        super().__init__(recognized_string, ID, line_number, column_number)
-
-    def validate(self):
-        if is_keyword(self.recognized_string):
-            IllegalIdentifierSameAsKeywordError.at(self.line_number, self.column_number, self.length(), id=self.recognized_string)
-        
-        if not self.first_letter().isalpha():
-            IllegalIdentifierError.at(self.line_number, self.column_number, self.length(), id=self.recognized_string)
-
-        if len(self.recognized_string) > 30:
-            IdentifierExceeding30CharsError.at(self.line_number, self.column_number, self.length(), id=self.recognized_string)
-
-    def is_main_function(self):
-        return "main_" == self.recognized_string[:5]
-
-class KeywordToken(Token):
-    def __init__(self, recognized_string, line_number, column_number):
-        super().__init__(recognized_string, KEYWORD, line_number, column_number)
-
-    def validate(self):
-        if not is_keyword(self.recognized_string):
-            if self.first_letter() == "#":
-                IllegalHashtagUsageError.at(self.line_number, self.column_number, self.length())
-            if self.first_letter() == '"':
-                IllegalQuoteUsageError.at(self.line_number, self.column_number, self.length())
-
-            NotAKeywordError.at(self.line_number, self.column_number, self.length())
-
-    def to_grammar_symbol(self): return self.recognized_string
-
-class AssignmentToken(Token):
-    def __init__(self, line_number, column_number):
-        super().__init__("=", "assignment", line_number, column_number)
-    
-    def to_grammar_symbol(self): return self.recognized_string
-
-class DelimiterToken(Token):
-    def __init__(self, recognized_string, line_number, column_number):
-        super().__init__(recognized_string, "delimiter", line_number, column_number)
-
-    def validate(self):
-        if self.recognized_string.is_delimiterSymbol(): return
-        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
-    
-    def to_grammar_symbol(self): return self.recognized_string
-
-class AddOperatorToken(Token):
-    def __init__(self, recognized_string, line_number, column_number):
-        super().__init__(recognized_string, ADD_OP, line_number, column_number)
-
-    def validate(self):
-        if self.recognized_string.is_addOperator(): return
-        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
-
-class MulOperatorToken(Token):
-    def __init__(self, recognized_string, line_number, column_number):
-        super().__init__(recognized_string, MUL_OP, line_number, column_number)
-
-    def validate(self):
-        if self.recognized_string in ["*", "//"]: return
-        if "/" in self.recognized_string:
-            SingleDashOperatorError.at(self.line_number, self.column_number)
-        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
-
-class LogOperatorToken(Token):
-    def __init__(self, recognized_string, line_number, column_number):
-        super().__init__(recognized_string, "logOperator", line_number, column_number)
-
-    def validate(self):
-        if is_logOperator(self.recognized_string): return
-        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
-
-    def to_grammar_symbol(self): return self.recognized_string
-
-class RelOperatorToken(Token):
-    def __init__(self, recognized_string, line_number, column_number):
-        super().__init__(recognized_string, REL_OP, line_number, column_number)
-
-    def validate(self):
-        if self.recognized_string in ["<", ">", "!=", "<=", ">=", "=="]: return
-        if "!" in self.recognized_string:
-            IllegalExclamationMarkUsageError.at(self.line_number, self.column_number)
-        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
-        
-class GroupingSymbolToken(Token):
-    def __init__(self, recognized_string, line_number, column_number):  
-        super().__init__(recognized_string, "groupingSymbol", line_number, column_number)
-
-    def validate(self):
-        if self.recognized_string in ["(",")","[","]"]: return
-
-        if self.recognized_string not in ["#{", "#}"]:
-            if "#" in self.recognized_string:
-                IllegalHashtagUsageError.at(self.line_number, self.column_number, self.length())
-            if "{" in self.recognized_string or "}" in self.recognized_string:
-                IllegalBraceUsageError.at(self.line_number, self.column_number, self.length())
-
-
-    def to_grammar_symbol(self): return self.recognized_string
-
-class EOFToken(Token):
-    def __init__(self, line_number, column_number):
-        super().__init__(EOF, "__internal__", line_number, column_number)
-
-    def is_EOFToken(self): return True
-
-
-################################## lexical analyzer ##########################################
-
-class LexicalAnalyzer:
-
-    def __init__(self, lines):
-        self.line_number = 0
-        self.column_number = 0
-        self.lines = lines
-
-    def is_end_of_file_reached(self):
-        return self.line_number >= len(self.lines) 
-
-    def is_end_of_line_reached(self, offset=0):
-        return self.column_number+offset >= len(self.current_line())
-
-    def current_line(self):
-        if self.is_end_of_file_reached(): return EOF
-        return self.lines[self.line_number]
-
-    def change_column(self):
-        if self.is_end_of_file_reached(): return
-        self.column_number += 1
-        if self.is_end_of_line_reached():
-            self.line_number += 1
-            self.column_number = 0
-
-    def reset_position(self, line, column):
-        self.line_number = line
-        self.column_number = column
-
-    def peek_next_character(self, offset=0):
-        if self.is_end_of_file_reached(): return EOF
-        if self.is_end_of_line_reached(offset): return EOL
-
-        column = self.column_number + offset
-        next_char = self.current_line()[column]
-        
-        return cpyCharacter.construct_if_legal_else_raise(
-            next_char,
-            callable_error_handler=lambda : IllegalCharacterError.at(self.line_number, column, char=next_char)
-        )
-        
-    def get_next_character(self):
-        next_character = self.peek_next_character()
-        self.change_column()
-        return next_character
-    
-    def consume_next_character(self):
-        self.change_column()
-    
-    def skip_whitespace(self):
-        while not self.is_end_of_file_reached():
-            next_char = self.peek_next_character()
-            if next_char.isspace():
-                self.consume_next_character()
-            else:
-                break
-
-    def skip_comment(self):
-        if self.peek_next_character(0) == "#":
-            if self.peek_next_character(1) != "$":
-                return
-            # print("comments on", self.line_number, self.column_number)
-            line = self.line_number
-            column = self.column_number
-            self.consume_next_character()
-            self.consume_next_character()
-
-            while not self.is_end_of_file_reached():
-                char = self.get_next_character()
-                if char == "#":
-                    char = self.get_next_character()
-                    if char == "$":
-                        # print("comments off", self.line_number, self.column_number-1)
-                        return
-            
-            CommentError.at(line, column)
-
-    
-    def get_next_token(self):
-        """
-        Returns the next recognized token or detects an error and exits.
-        Before calling it, there should be a check if the end of the file 
-        has been reached.
-        """
-        line = self.line_number
-        column = self.column_number
-
-        while not self.is_end_of_line_reached():
-            self.skip_whitespace()
-            self.skip_comment()
-            if line != self.line_number or column != self.column_number:
-                line = self.line_number
-                column = self.column_number
-            else:
-                break
-
-        char = self.peek_next_character()
-
-        if char.is_EOF():
-            return EOFToken(line, column)
-
-        if char.isdigit():
-            return self.process_token_starting_with_digit()
-        
-        if char.can_be_used_in_identifiers():
-            return self.process_token_starting_with_letter()
-        
-        if char.is_hashtag():
-            return self.process_token_starting_hashtag()
-        
-        if char.is_quote():
-            return self.process_token_starting_quote()
-
-        if char.is_delimiterSymbol():
-            self.consume_next_character()
-            return DelimiterToken(char, line, column)
-        
-        if char.is_groupingSymbol():
-            self.consume_next_character()
-            return GroupingSymbolToken(char, line, column)
-
-        if char.is_addOperator():
-            self.consume_next_character()
-            return AddOperatorToken(char, line, column)
-        
-        if char.is_mulOperator():
-            return self.process_token_starting_mulOperator()
-            
-        if char.is_relOperator():
-            return self.process_token_starting_relOperator()
-        
-        if char.is_dollar():
-            IllegalDollarSignUsageError.at(line, column)
-    
-    def process_token_starting_with_digit(self):
-        starts_at_line = self.line_number
-        starts_at_column = self.column_number
-        recognized_string = self.get_next_character()
-
-        while True:
-            next_char = self.peek_next_character()
-            
-            if next_char.isdigit():
-                recognized_string += self.get_next_character()
-            elif next_char.can_be_used_in_identifiers():
-                # this will raise an IllegalIdentifierStartsWithDigitError
-                self.reset_position(starts_at_line, starts_at_column)
-                self.process_token_starting_with_letter()
-            else:
-                return NumberToken(recognized_string, starts_at_line, starts_at_column)
-            
-
-    def process_token_starting_with_letter(self):
-        starts_at_line = self.line_number
-        starts_at_column = self.column_number
-        recognized_string = self.get_next_character()
-
-        while True:
-            next_char = self.peek_next_character()
-
-            if next_char.can_be_used_in_identifiers():
-                recognized_string += self.get_next_character()
-            else:
-                if is_logOperator(recognized_string):
-                    return LogOperatorToken(recognized_string, starts_at_line, starts_at_column)
-                elif is_keyword(recognized_string):
-                    return KeywordToken(recognized_string, starts_at_line, starts_at_column)
-                else:
-                    return IdentifierToken(recognized_string, starts_at_line, starts_at_column)
-    
-    def process_token_starting_hashtag(self):
-        starts_at_line = self.line_number
-        starts_at_column = self.column_number
-        recognized_string = self.get_next_character()
-
-        while True:
-            next_char = self.peek_next_character()
-
-            if next_char.can_be_used_in_identifiers():
-                recognized_string += self.get_next_character()
-            else:
-                if is_keyword(recognized_string):
-                    return KeywordToken(recognized_string, starts_at_line, starts_at_column)
-                elif next_char in ["{", "}"]:
-                    recognized_string += self.get_next_character()
-                    return GroupingSymbolToken(recognized_string, starts_at_line, starts_at_column)
-                else:
-                    return KeywordToken(recognized_string, starts_at_line, starts_at_column)
-                
-    def process_token_starting_quote(self):
-        starts_at_line = self.line_number
-        starts_at_column = self.column_number
-        recognized_string = self.get_next_character()
-
-        while True:
-            next_char = self.peek_next_character()
-
-            if next_char.can_be_used_in_keywords():
-                recognized_string += self.get_next_character()
-            else:
-                return KeywordToken(recognized_string, starts_at_line, starts_at_column)
-    
-    def process_token_starting_mulOperator(self):
-        starts_at_line = self.line_number
-        starts_at_column = self.column_number
-        recognized_string = self.get_next_character()
-
-        if recognized_string == "*":
-            return MulOperatorToken(recognized_string, starts_at_line, starts_at_column)
-        else:
-            next_char = self.get_next_character()
-            return MulOperatorToken("/" + next_char, starts_at_line, starts_at_column)
-            
-    
-    def process_token_starting_relOperator(self):
-        starts_at_line = self.line_number
-        starts_at_column = self.column_number
-        recognized_string = self.get_next_character()
-
-        next_char = self.peek_next_character()
-
-        if recognized_string.is_assignmentSymbol():
-            if next_char.is_assignmentSymbol():
-                self.consume_next_character()
-                return RelOperatorToken("==", starts_at_line, starts_at_column)
-            else:
-                return AssignmentToken(starts_at_line, starts_at_column)
-
-        if next_char == "=":
-            recognized_string += self.get_next_character()
-        
-        return RelOperatorToken(recognized_string, starts_at_line, starts_at_column)
-        
-
-SYMBOLS = [
-    LPAR:="(",
-    RPAR:=")",
-    LSQBR:="[",
-    RSQBR:="]",
-    LCDBLK:="#{",
-    RCDBLK:="#}",
-    COM:=",",
-    COL:=":",
-    SCOL:=";",
-    EQLS:="="
-]
-
-
-        
-#################################### syntax analyzer #########################################
-# Parser : klash pou antlei lektikes monades apo ton lektiko analyth (Lex)
-
-class Parser:
-    def __init__(self, lexical_analyzer):
-        self.lexical_analyzer = lexical_analyzer
-        self.lines = self.lexical_analyzer.lines
-
-    def peek_token(self):#handle EOFError?
-        try:
-            return self.look_ahead_token
-        except AttributeError:
-            self.look_ahead_token = self.lexical_analyzer.get_next_token()
-            return self.look_ahead_token
-    
-    def get_token(self):#handle EOFError?
-        next_token = self.look_ahead_token
-        self.look_ahead_token = self.lexical_analyzer.get_next_token()
-        return next_token
-    
-    def syntax_analyzer(self):
-        global token
-        token = self.get_token()
-        self.startRule()
-        print('Compilation completed successfully') #replace print with uniform print
-        
-
-    def startRule(self):
-        self.def_main_part()
-        self.call_main_part()
-
-    #todo this
-    def def_main_part(self):
-        while True:
-            self.def_main_function()
-            if ...:
-                break
-    
-
-    def def_main_function(self):
-        global token
-        if(token.recognized_string == 'def'):
-            token = self.get_token()
-
-            if(token.family == ID):
-                token = self.get_token()
-
-                if(token.recognized_string == '('):
-                    token = self.get_token()
-
-                    if(token.recognized_string == ')'):
-                        token = self.get_token()
-
-                        if(token.recognized_string == ':'):
-                            token = self.get_token()
-
-                            if(token.recognized_string == '#{'):
-                                token = self.get_token()
-
-                                self.declarations()
-                                #todo ???
-                                while ...:
-                                    self.def_function()
-                                self.statements()
-
-                                if(token.recognized_string == '#}'):
-                                    return
-                                else:
-                                    self.error('Expected "#}" at the end of main function block.')
-                            else:
-                                self.error('Expected "#{" at the start of main function block.')
-                        else:
-                            self.error('Expected ":" before main function block.')
-                    else:
-                        self.error('Expected ")".')
-                else:
-                    self.error('Expected "(".')
-            else:
-                self.error('Expected main function name.')
-        else:
-            self.error('Expected main function declaration.')
-
-
-    def def_function(self):
-        global token
-        if(token.recognized_string == 'def'):
-            token = self.get_token()
-
-            if(token.family == ID):
-                token = self.get_token()
-
-                if(token.recognized_string == '('):
-                    token = self.get_token()
-                    self.id_list()
-
-                    if(token.recognized_string == ')'):
-                        token = self.get_token()
-
-                        if(token.recognized_string == ':'):
-                            token = self.get_token()
-
-                            if(token.recognized_string == '#{'):
-                                token = self.get_token()
-
-                                # introduce body ???
-                                self.declarations()
-                                # todo this, kleen star
-                                while ...:
-                                    self.def_function()
-                                self.statements()
-
-                                if(token.recognized_string == '#}'):
-                                    return
-                                else:
-                                    self.error('Expected "#}" at the end of function block.')
-                            else:
-                                self.error('Expected "#{" at the start of function block.')
-                        else:
-                            self.error('Expected ":" before function block.')
-                    else:
-                        self.error('Expected ")".')
-                else:
-                    self.error('Expected "(".')
-            else:
-                self.error('Expected function name.')
-        else:
-            self.error('Expected function declaration.')
-
-
-    def declarations(self):
-        #kleen star
-        while ...:
-            self.declaration_line()
-
-    def declaration_line(self):
-        global token
-        # while(token.recognized_string == '#declare'):
-        if (token.recognized_string == '#declare'):
-            token = self.get_token()
-            self.id_list()
-        else:
-            self.error("TODO!!!")
-
-    def statement(self):
-        if ...:
-            self.simple_statement()
-        elif ...:
-            self.structured_statement()
-
-    def statements(self):
-        #at least one; +
-        while ...:
-            self.statement()
-
-    def simple_statement(self):
-        if ...:
-            self.assingmet_stat()
-        elif ...:
-            self.print_stat()
-        elif ...:
-            self.return_stat()
-
-    def structured_statement(self):
-        if ...:
-            self.if_stat()
-        elif ...:
-            self.while_stat()
-
-    def assignmet_stat(self):
-        global token
-        if(token.family == ID):
-            token = self.get_token()
-
-            if(token.recognized_string == "="):
-                token = self.get_token()
-
-                if(token.recognized_string == 'int'):
-                    token = self.get_token()
-                    if(token.recognized_string == '('):
-                        token = self.get_token()
-                        if(token.recognized_string == 'input'):
-                            token = self.get_token()
-                            if(token.recognized_string == '('):
-                                token = self.get_token()
-                                if(token.recognized_string == ')'):
-                                    token = self.get_token()
-                                    if(token.recognized_string == ')'):
-                                        token = self.get_token()
-                                        if(token.recognized_string == ';'):
-                                            token = self.get_token()
-                                        else:
-                                            self.error('Expected ";" at the end of input.')
-                                    else:
-                                        self.error('Expected ")".')
-                                else:
-                                    self.error('Expected ")".')
-                            else:
-                                self.error('Expected "(" after input.')
-                        else:
-                            self.error('Expected keyword "input".')
-                    else:
-                        self.error('Expected "(" after "int".')
-
-                else:
-                    self.expression()
-                    if(token.recognized_string == ';'):
-                        token = self.get_token()
-                    else:
-                        self.error('Expected ";" after expression.')
-
-            else:
-                self.error('Expected "=" after variable name.')
-
-        else:
-            self.error('Expected variable name for assignment.')
-
-
-
-    def print_stat(self):
-        global token
-        if(token.recognized_string == 'print'):
-            token = self.get_token()
-
-            if(token.recognized_string == '('):
-                token = self.get_token()
-                self.expression()
-                if(token.recognized_string == ')'):
-                    token = self.get_token()
-                    if(token.recognized_string == ';'):
-                        token = self.get_token()
-                    else:
-                        self.error('Expected ";" at the end of print statement')
-                else:
-                    self.error('Expected ")".')
-            else:
-                self.error('Expected "(".')
-
-        else:
-            self.error('Expected keyword "print".')
-
-
-    def return_stat(self):
-        global token
-        if(token.recognized_string == 'return'):
-            token = self.get_token()
-
-            if(token.recognized_string == '('):
-                token = self.get_token()
-                self.expression()
-                if(token.recognized_string == ')'):
-                    token = self.get_token()
-                    if(token.recognized_string == ';'):
-                        token = self.get_token()
-                    else:
-                        self.error('Expected ";" at the end of return statement')
-                else:
-                    self.error('Expected ")".')
-            else:
-                self.error('Expected "(".')
-
-        else:
-            self.error('Expected keyword "return".')
-
-
-    def if_stat(self):
-        global token
-        if(token.recognized_string == 'if'):
-            token = self.get_token()
-            if(token.recognized_string == '('):
-                token = self.get_token()
-                self.condition()
-                if(token.recognized_string == ')'):
-                    token = self.get_token()
-                    if(token.recognized_string == ':'):
-                        token = self.get_token()
-
-                        if(token.recognized_string == '#{'):
-                            token = self.get_token()
-                            self.statements()
-                            if(token.recognized_string == '#}'):
-                                token = self.get_token()
-                                self.else_part()
-                            else:
-                                self.error('Expected "#}" at the end of block.')
-                        else:
-                            self.statement()
-                            # this is wrong
-                            # it is optional
-                            self.else_part()
-                    else:
-                        self.error('Expected ":" after if condition.')
-                else:
-                    self.error('Expected ")".')
-            else:
-                self.error('Expected "(" after keyword "if".')
-        else:
-            self.error('Expected "if" keyword.')
-
-    #introduce if statement body
-
-    def else_part(self):
-        global token
-        if(token.recognized_string == 'else'):
-            token = self.get_token()
-            if(token.recognized_string == ':'):
-                token = self.get_token()
-                if(token.recognized_string == '#{'):
-                    token = self.get_token()
-                    self.statements()
-                    if(token.recognized_string == '#}'):
-                        token = self.get_token()
-                    else:
-                        self.error('Expected "#}" after statents.')
-                else:
-                    self.statement()
-            else:
-                self.error('Expected ":" after "else" keyword.')
-        else:
-            self.error('Expected "else" keyword.')
-
-    def while_stat(self):
-        global token
-        if(token.recognized_string == 'while'):
-            token = self.get_token()
-            if(token.recognized_string == '('):
-                token = self.get_token()
-                self.condition()
-                if(token.recognized_string == ')'):
-                    token = self.get_token()
-                    if(token.recognized_string == ':'):
-                        token = self.get_token()
-
-                        if(token.recognized_string == '#{'):
-                            token = self.get_token()
-                            self.statements()
-                            if(token.recognized_string == '#}'):
-                                token = self.get_token()
-                            else:
-                                self.error('Expected "#}" at the end of block.')
-                        else:
-                            self.statement()
-                    else:
-                        self.error('Expected ":" after while condition.')
-                else:
-                    self.error('Expected ")" after condition.')
-            else:
-                self.error('Expected "(".')
-        else:
-            self.error('Expected "while" keyword.')
-
-
-    def id_list(self):
-        global token
-        if(token.family == ID):
-            token = self.get_token()
-            while(token.recognized_string == ','):
-                token = self.get_token()
-                if(token.family == ID):
-                    token = self.get_token()
-                else:
-                    self.error('Expected ID but argument was type of: ' + token.family)
-        else:
-            self.error('Expected ID but argument was type of: ' + token.family)
-
-
-    def expression(self):
-        self.optional_sign()
-        self.term()
-        # klein star
-        while ...:
-            self.ADD_OP()
-            self.term()
-
-    def term(self):
-        self.factor()
-        #klein star
-        while ...:
-            self.MUP_OP()
-            self.factor()
-
-    def factor(self):
-        global token
-        if(token.recognized_string == NUM):
-            token = self.get_token()
-        elif(token.family == ID):
-            token = self.get_token()
-            self.idtail()
-        elif(token.recognized_string == '('):
-            token = self.get_token()
-            self.expression()
-            if(token.recognized_string == ')'):
-                token = self.get_token()
-            else:
-                self.error('Expected ")".')
-        else:
-            self.error('Invalid prompt.')
-
-
-    def idtail(self):
-        global token
-        if(token.recognized_string == '('):
-            token = self.get_token()
-            self.actual_par_list()
-            if(token.recognized_string == ')'):
-                token = self.get_token()
-            else:
-                self.error('Expected ")" at the end.')
-        else:
-            self.error('Expected "(".')
-
-
-    def actual_par_list(self):
-        global token
-        self.expression()
-        while(token.recognized_string == ','):
-            token = self.get_token()
-            self.expression()
-
-    def optional_sign(self):
-        #correct this
-        self.ADD_OP()
-
-    def condition(self):
-        global token
-        #is equivelant?
-        if(token.recognized_string == 'or'):
-            token = self.get_token()
-            self.bool_term()
-        else:
-            self.bool_term()
-
-
-    def bool_term(self):
-        global token
-        #is equivelant?
-        if(token.recognized_string == 'and'):
-            token = self.get_token()
-            self.bool_factor()
-        else:
-            self.bool_factor()
-
-
-    def bool_factor(self):
-        global token
-        if(token.recognized_string == 'not'):
-            token = self.get_token()
-            if(token.recognized_string == '['):
-                token = self.get_token()
-                self.condition()
-                if(token.recognized_string == ']'):
-                    token = self.get_token()
-                else:
-                    self.error('Expected "]" after condition.')
-            else:
-                self.error('Expected "[" after logical operator "not".')
-        elif(token.recognized_string == '['):
-            token = self.get_token()
-            self.condition()
-            if(token.recognized_string == ']'):
-                token = self.get_token()
-            else:
-                self.error('Expected "]" after condition.')
-        else:
-            self.expression()
-            self.REL_OP() #??? 
-            self.expression()
-
-
-    def call_main_part(self):
-        global token
-        if(token.recognized_string == 'if'):
-            token = self.get_token()
-            if(token.recognized_string == '__name__'):
-                token = self.get_token()
-                if(token.recognized_string == '=='):
-                    token = self.get_token()
-                    if(token.recognized_string == '"__main__"'):
-                        token = self.get_token()
-                        if(token.recognized_string == ':'):
-                            token = self.get_token()
-                            # plus; one or more times
-                            self.main_function_call()
-                        else:
-                            self.error('Expected ":" after "__main__" keyword.')
-                    else:
-                        self.error('Expected "__main__" keyword.')
-                else:
-                    self.error('Expected "==".')
-            else:
-                self.error('Expected "__name__" keyword.')
-        else:
-            self.error('Expected "if" keyword.')
-
-
-    def main_function_call(self):
-        global token
-        if(token.family == 'ID'):
-            token = self.get_token()
-            if(token.recognized_string == '('):
-                token = self.get_token()
-                if(token.recognized_string == ')'):
-                    token = self.get_token()
-                    if(token.recognized_string == ';'):
-                        token = self.get_token()
-                    else:
-                        self.error('Expected ";" at the end of function call.')
-                else:
-                    self.error('Expected ")".')
-            else:
-                self.error('Expected "(" after function name.')
-        else:
-            self.error('Expected main function name.')
-
-
-
-
-        
 
 
 ########################################### Errors ###########################################
@@ -1023,18 +101,19 @@ class Error:
     def at(self, line_number, column_number, token_length=None, **additional_args):
         position = f"line {line_number+1}, column {column_number+1}"
         message = self.format_message(position=position, **additional_args)
-        
-        global lines
-        offending_line = lines[line_number]
 
-        print(f"Error:\n" + self.ident + message)
-        
-        if token_length is None:
-            token_length = self.default_token_length
-        
-        print()
-        print(offending_line)
-        print(f"{' '*column_number}{'^'*token_length}")
+        global lines;print(lines,line_number)#todo remove
+        # offending_line = lines[line_number] #todo remove
+
+        print(f"--- Error:\n" + self.ident + message)
+
+        if token_length is None: token_length = self.default_token_length
+
+        if token_length>0:
+            print(f"\n--- Line {line_number+1}:")
+            print(lines[line_number])
+            print(f"{' '*column_number}{'^'*token_length}")
+            print()
 
         exit()
 
@@ -1090,16 +169,676 @@ NotAKeywordError = Error(
     "A misspelled keyword or an illegal identifier was found at {position}.",
     "An identifier must start with a letter and it can only use alphanumeric characters and underscores"
 )
-OutOfBoundsNumber = Error(
-    "The number {number} was found at {position}. It has an sabsolute value greater than 2**32"
+OutOfBoundsNumberError = Error(
+    "The number {number} was found at {position}. It has an absolute value greater than 2**32"
 )
 SingleDashOperatorError = Error(
     "The division operator is '//', a single '/' was found at {position}",
     token_length=1
 )
-SyntaxError = Error("A syntax error occured at {position}")
+SyntError = Error("A syntax error occurred at {position}. Expected '{expected_value}', but '{given_value}' was given")
+
+NoError = Error()
+NoError.at = lambda *args, **kwargs: None
 
 
+
+
+
+class Token:
+    def __init__(self, recognized_string, family, line_number, column_number):
+        self.recognized_string = recognized_string
+        self.family = family
+        self.line_number = line_number
+        self.column_number = column_number
+        self.validate()
+
+    def validate(self): pass
+
+    def first_letter(self): return self.recognized_string[0]
+
+    def length(self): return len(self.recognized_string)
+
+    def does_it_match(self, grammar_symbol): raise NotImplementedError
+
+class NumberToken(Token):
+    def __init__(self, recognized_string, line_number, column_number):
+        super().__init__(recognized_string, NUM, line_number, column_number)
+
+    def validate(self):
+        num = int(self.recognized_string)
+        if abs(num) >= 2**32:
+            OutOfBoundsNumberError.at(self.line_number, self.column_number, number=num)
+
+    def does_it_match(self, grammar_symbol): return self.family == grammar_symbol
+
+class IdentifierToken(Token):
+    def __init__(self, recognized_string, line_number, column_number):
+        super().__init__(recognized_string, ID, line_number, column_number)
+
+    def validate(self):
+        if is_keyword(self.recognized_string):
+            IllegalIdentifierSameAsKeywordError.at(self.line_number, self.column_number, self.length(), id=self.recognized_string)
+
+        if not self.first_letter().isalpha():
+            IllegalIdentifierError.at(self.line_number, self.column_number, self.length(), id=self.recognized_string)
+
+        if len(self.recognized_string) > 30:
+            IdentifierExceeding30CharsError.at(self.line_number, self.column_number, self.length(), id=self.recognized_string)
+
+    def does_it_match(self, grammar_symbol): 
+        print(f"expected {self.family}, found {grammar_symbol}")
+        return self.family == grammar_symbol
+
+class KeywordToken(Token):
+    def __init__(self, recognized_string, line_number, column_number):
+        super().__init__(recognized_string, KEYWORD, line_number, column_number)
+
+    def validate(self):
+        if not is_keyword(self.recognized_string):
+            if self.first_letter() == "#":
+                IllegalHashtagUsageError.at(self.line_number, self.column_number, self.length())
+            if self.first_letter() == '"':
+                IllegalQuoteUsageError.at(self.line_number, self.column_number, self.length())
+
+            NotAKeywordError.at(self.line_number, self.column_number, self.length())
+
+    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+
+class AssignmentToken(Token):
+    def __init__(self, line_number, column_number):
+        super().__init__(ASGN, "assignment", line_number, column_number)
+
+    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+
+class DelimiterToken(Token):
+    def __init__(self, recognized_string, line_number, column_number):
+        super().__init__(recognized_string, "delimiter", line_number, column_number)
+
+    def validate(self):
+        if self.recognized_string in delimiter_chars: return
+        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
+
+    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+
+class AddOperatorToken(Token):
+    def __init__(self, recognized_string, line_number, column_number):
+        super().__init__(recognized_string, ADD_OP, line_number, column_number)
+
+    def validate(self):
+        if self.recognized_string in add_chars: return
+        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
+
+    def does_it_match(self, grammar_symbol): return self.family == grammar_symbol
+
+class MulOperatorToken(Token):
+    def __init__(self, recognized_string, line_number, column_number):
+        super().__init__(recognized_string, MUL_OP, line_number, column_number)
+
+    def validate(self):
+        if self.recognized_string in ["*", "//"]: return
+        if "/" in self.recognized_string:
+            SingleDashOperatorError.at(self.line_number, self.column_number)
+        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
+
+    def does_it_match(self, grammar_symbol): return self.family == grammar_symbol
+
+class LogOperatorToken(Token):
+    def __init__(self, recognized_string, line_number, column_number):
+        super().__init__(recognized_string, "logOperator", line_number, column_number)
+
+    def validate(self):
+        if self.recognized_string in logical_operators: return
+        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
+
+    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+
+class RelOperatorToken(Token):
+    def __init__(self, recognized_string, line_number, column_number):
+        super().__init__(recognized_string, REL_OP, line_number, column_number)
+
+    def validate(self):
+        if self.recognized_string in ["<", ">", "!=", "<=", ">=", "=="]: return
+        if "!" in self.recognized_string:
+            IllegalExclamationMarkUsageError.at(self.line_number, self.column_number)
+        raise ValueError(f"wrong initialization of {self.__class__.__name__}")
+
+    def does_it_match(self, grammar_symbol): 
+        return self.family == grammar_symbol or self.recognized_string == EQLS
+
+class GroupingSymbolToken(Token):
+    def __init__(self, recognized_string, line_number, column_number):
+        super().__init__(recognized_string, "groupingSymbol", line_number, column_number)
+
+    def validate(self):
+        if self.recognized_string in [LPAR,RPAR,LSQB,RSQB]: return
+
+        if self.recognized_string not in [LBLCK, RBLCK]:
+            if "#" in self.recognized_string:
+                IllegalHashtagUsageError.at(self.line_number, self.column_number, self.length())
+            if "{" in self.recognized_string or "}" in self.recognized_string:
+                IllegalBraceUsageError.at(self.line_number, self.column_number, self.length())
+
+    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+
+class EOFToken(Token):
+    def __init__(self, line_number, column_number):
+        super().__init__(EOF, "__internal__", line_number, column_number)
+
+    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+
+
+################################## lexical analyzer ##########################################
+
+class LexicalAnalyzer:
+
+    def __init__(self, lines):
+        self.line_number = 0
+        self.column_number = 0
+        self.lines = lines
+
+    def is_end_of_file_reached(self): return self.line_number >= len(self.lines)
+
+    def is_end_of_line_reached(self, offset=0):
+        return self.column_number+offset >= len(self.current_line())
+
+    def current_line(self):
+        if self.is_end_of_file_reached(): return EOF
+        return self.lines[self.line_number]
+
+    def change_column(self):
+        if self.is_end_of_file_reached(): return
+        self.column_number += 1
+        if self.is_end_of_line_reached():
+            self.line_number += 1
+            self.column_number = 0
+
+    def change_position(self, line, column):
+        self.line_number = line
+        self.column_number = column
+
+    def peek_next_character(self, offset=0):
+        if self.is_end_of_file_reached(): return EOF
+        if self.is_end_of_line_reached(offset): return EOL
+
+        column = self.column_number + offset
+        next_char = self.current_line()[column]
+
+        if next_char not in legal_characters:
+            IllegalCharacterError.at(self.line_number, column, char=next_char)
+
+        return next_char
+
+    def get_next_character(self):
+        next_character = self.peek_next_character()
+        self.change_column()
+        return next_character
+
+    def consume_next_character(self): self.change_column()
+
+    def skip_whitespace(self):
+        while not self.is_end_of_file_reached():
+            next_char = self.peek_next_character()
+            if next_char.isspace():
+                self.consume_next_character()
+            else:
+                break
+
+    def skip_comment(self):
+        if self.peek_next_character(0) == "#":
+            if self.peek_next_character(1) != "$":
+                return
+            # print("comments on", self.line_number, self.column_number)
+            line = self.line_number
+            column = self.column_number
+            self.consume_next_character()
+            self.consume_next_character()
+
+            while not self.is_end_of_file_reached():
+                char = self.get_next_character()
+                if char == "#":
+                    char = self.get_next_character()
+                    if char == "$":
+                        # print("comments off", self.line_number, self.column_number-1)
+                        return
+
+            CommentError.at(line, column)
+
+    def get_next_token(self):
+        """
+        Returns the next recognized token or detects an error and exits.
+        Before calling it, there should be a check if the end of the file
+        has been reached.
+        """
+        line = self.line_number
+        column = self.column_number
+
+        while not self.is_end_of_line_reached():
+            self.skip_whitespace()
+            self.skip_comment()
+            if line != self.line_number or column != self.column_number:
+                line = self.line_number
+                column = self.column_number
+            else:
+                break
+
+        char = self.peek_next_character()
+
+        if char == EOF: return EOFToken(line, column)
+
+        if char.isdigit(): return self.process_token_starting_with_digit()
+
+        if char in identifier_characters: return self.process_token_starting_with_letter()
+
+        if char == "#": return self.process_token_starting_hashtag()
+
+        if char == '"': return self.process_token_starting_quote()
+
+        if char in delimiter_chars:
+            self.consume_next_character()
+            return DelimiterToken(char, line, column)
+
+        if char in grouping_chars:
+            self.consume_next_character()
+            return GroupingSymbolToken(char, line, column)
+
+        if char in add_chars:
+            self.consume_next_character()
+            return AddOperatorToken(char, line, column)
+
+        if char in mul_chars: return self.process_token_starting_mulOperator()
+
+        if char in rel_chars: return self.process_token_starting_relOperator()
+
+        if char == "$": IllegalDollarSignUsageError.at(line, column)
+
+    def process_token_starting_with_digit(self):
+        starts_at_line = self.line_number
+        starts_at_column = self.column_number
+        recognized_string = self.get_next_character()
+
+        while True:
+            next_char = self.peek_next_character()
+
+            if next_char.isdigit():
+                recognized_string += self.get_next_character()
+            elif next_char in identifier_characters:
+                # this will raise an IllegalIdentifierStartsWithDigitError
+                self.change_position(starts_at_line, starts_at_column)
+                self.process_token_starting_with_letter()
+            else:
+                return NumberToken(recognized_string, starts_at_line, starts_at_column)
+
+    def process_token_starting_with_letter(self):
+        starts_at_line = self.line_number
+        starts_at_column = self.column_number
+        recognized_string = self.get_next_character()
+
+        while True:
+            next_char = self.peek_next_character()
+
+            if next_char in identifier_characters:
+                recognized_string += self.get_next_character()
+            else:
+                if recognized_string in logical_operators:
+                    return LogOperatorToken(recognized_string, starts_at_line, starts_at_column)
+                elif is_keyword(recognized_string):
+                    return KeywordToken(recognized_string, starts_at_line, starts_at_column)
+                else:
+                    return IdentifierToken(recognized_string, starts_at_line, starts_at_column)
+
+    def process_token_starting_hashtag(self):
+        starts_at_line = self.line_number
+        starts_at_column = self.column_number
+        recognized_string = self.get_next_character()
+
+        while True:
+            next_char = self.peek_next_character()
+
+            if next_char in identifier_characters:
+                recognized_string += self.get_next_character()
+            else:
+                if is_keyword(recognized_string):
+                    return KeywordToken(recognized_string, starts_at_line, starts_at_column)
+                elif next_char in ["{", "}"]:
+                    recognized_string += self.get_next_character()
+                    return GroupingSymbolToken(recognized_string, starts_at_line, starts_at_column)
+                else:
+                    return KeywordToken(recognized_string, starts_at_line, starts_at_column)
+
+    def process_token_starting_quote(self):
+        starts_at_line = self.line_number
+        starts_at_column = self.column_number
+        recognized_string = self.get_next_character()
+
+        while True:
+            next_char = self.peek_next_character()
+
+            if next_char in keyword_characters:
+                recognized_string += self.get_next_character()
+            else:
+                return KeywordToken(recognized_string, starts_at_line, starts_at_column)
+
+    def process_token_starting_mulOperator(self):
+        starts_at_line = self.line_number
+        starts_at_column = self.column_number
+        recognized_string = self.get_next_character()
+
+        if recognized_string == "*":
+            return MulOperatorToken(recognized_string, starts_at_line, starts_at_column)
+        else:
+            next_char = self.get_next_character()
+            return MulOperatorToken("/" + next_char, starts_at_line, starts_at_column)
+
+    def process_token_starting_relOperator(self):
+        starts_at_line = self.line_number
+        starts_at_column = self.column_number
+        recognized_string = self.get_next_character()
+
+        next_char = self.peek_next_character()
+
+        if recognized_string == "=":
+            if next_char == "=":
+                self.consume_next_character()
+                return RelOperatorToken(EQLS, starts_at_line, starts_at_column)
+            else:
+                return AssignmentToken(starts_at_line, starts_at_column)
+
+        if next_char == "=":
+            recognized_string += self.get_next_character()
+
+        return RelOperatorToken(recognized_string, starts_at_line, starts_at_column)
+
+
+
+
+
+
+
+
+def terminal_symbol(expected_value, error=SyntError):
+    def terminal_symbol_impl(par):
+        token = par.current_token
+        if token.does_it_match(expected_value):
+            print(f"token '{token.recognized_string}' @ {token.line_number,token.column_number} got captured as {expected_value}")#todo! remove
+            par.consume_token()
+        else:
+            error.at(
+                token.line_number, token.column_number, token.length(),
+                expected_value=expected_value, given_value=token.recognized_string
+            )
+    terminal_symbol_impl.expected_value = expected_value
+    return terminal_symbol_impl
+
+def sequence(*symbols):
+    def sequence_impl(par):
+        print("\nnew seq")
+        for symbol in symbols: 
+            token = par.current_token 
+            print(f"    found token '{token.recognized_string}' @ {token.line_number,token.column_number}")#todo! remove
+            print(symbol)
+            symbol(par)
+    sequence_impl.expected_value = symbols[0].expected_value
+    return sequence_impl
+
+# def star(expected_value, *symbols):
+#     def star_impl(par):
+#         while par.current_token.does_it_match(expected_value):
+#             for symbol in symbols: symbol(par)
+#     return star_impl
+
+# def optional(expected_value, *symbols, error=SyntError):
+#     def optional_impl(par):
+#         if par.current_token.does_it_match(expected_value):
+#             for symbol in symbols: symbol(par)
+#     return optional_impl
+    
+#################################### syntax analyzer #########################################
+# Parser : klash pou antlei lektikes monades apo ton lektiko analyth (Lex)
+
+class Parser:
+    def __init__(self, lexical_analyzer):
+        self.lexical_analyzer = lexical_analyzer
+        # self.lines = self.lexical_analyzer.lines
+        self.current_token = self.lexical_analyzer.get_next_token()
+        self.next_token = self.lexical_analyzer.get_next_token()
+
+    # def peek_next_token(self): return self.next_token
+
+    def consume_token(self):
+        self.current_token = self.next_token
+        self.next_token = self.lexical_analyzer.get_next_token()
+
+    def syntax_analyzer(self):
+        self.startRule()
+        self.eof()
+        print('Compilation completed successfully') #replace print with uniform print
+        
+    def star(self, expected_value=None, *symbols):
+        if expected_value is None: expected_value = symbols[0].expected_value
+        while self.current_token.does_it_match(expected_value):
+            for symbol in symbols: symbol()
+    
+    def plus(self, expected_value=None, *symbols):
+        if expected_value is None: expected_value = symbols[0].expected_value
+        for symbol in symbols: symbol()
+        self.star(expected_value, *symbols)
+
+    def optional(self, expected_value=None, *symbols):
+        if expected_value is None: expected_value = symbols[0].expected_value
+        if self.current_token.does_it_match(expected_value):
+            for symbol in symbols: symbol()
+
+    eof = terminal_symbol(EOF)
+
+    num = terminal_symbol(NUM)
+    id = terminal_symbol(ID)
+    add_op = terminal_symbol(ADD_OP)
+    mul_op = terminal_symbol(MUL_OP)
+    rel_op = terminal_symbol(REL_OP)
+
+    if_ = terminal_symbol(IF)
+    else_ = terminal_symbol(ELSE)
+    while_ = terminal_symbol(WHILE)
+    return_ = terminal_symbol(RETURN)
+    print_ = terminal_symbol(PRINT)
+    int_ = terminal_symbol(INT)
+    input_ = terminal_symbol(INPUT)
+    def_ = terminal_symbol(DEF)
+    declare_ = terminal_symbol(DECLARE)
+    name_ = terminal_symbol(__NAME__)
+    main_ = terminal_symbol(__MAIN__)
+
+    and_ = terminal_symbol(AND)
+    or_ = terminal_symbol(OR)
+    not_ = terminal_symbol(NOT)
+
+    lpar = terminal_symbol(LPAR)
+    rpar = terminal_symbol(RPAR)
+    lsqb = terminal_symbol(LSQB)
+    rsqb = terminal_symbol(RSQB)
+    lblck = terminal_symbol(LBLCK)
+    rblck = terminal_symbol(RBLCK)
+
+    cln = terminal_symbol(CLN)
+    smcln = terminal_symbol(SMCLN)
+    com = terminal_symbol(COM)
+
+    asgn = terminal_symbol(ASGN)
+
+    eqls = terminal_symbol(EQLS)
+
+    def id_main_function(self):
+        token = self.current_token
+        self.id()
+        if "main_" != token.recognized_string[:5]:
+            raise Exception() #todo message
+        
+    id_main_function.expected_value = ID             
+        
+    def function_body(self):
+        self.declarations()
+        self.star(self.def_function)
+        self.statements()
+
+    def id_list(self):
+        def star_comma_id():
+            return self.star(self.com, self.id)
+        self.optional(self.id, star_comma_id)
+
+    def_function = sequence(
+        def_, id, lpar, id_list, rpar,
+            lblck,
+                function_body,
+            rblck
+    )
+
+    declaration_line = sequence(declare_, id_list)
+
+    def declarations(self): self.star(self.declaration_line)        
+    
+    def condition(self):
+        self.bool_term()
+        self.star(self.or_, self.bool_term)
+
+    def bool_term(self):
+        self.bool_factor()
+        self.star(self.and_, self.bool_factor)
+
+    bracketed_condition = sequence(lsqb, condition, rsqb)
+
+    def bool_factor(self):
+        token = self.current_token
+        if token.does_it_match(NOT):
+            self.not_(); self.bracketed_condition()
+        elif token.does_it_match(LSQB):
+            self.bracketed_condition()
+        elif token.recognized_string in [NUM, ID, LPAR, ADD_OP]: #this is wrong
+            self.expression()
+            self.rel_op()
+            self.expression()
+        else:
+            raise NotImplementedError()#todo
+        
+    def actual_par_list(self):
+        token = self.current_token
+        if token.recognized_string in [ADD_OP, NUM, LPAR, ID]:
+            self.expression()
+            self.star(self.com, self.expression)
+
+    def idtail(self):
+        self.optional(self.lpar, self.actual_par_list, self.rpar)
+
+    def factor(self):
+        token = self.current_token
+        if token.does_it_match(NUM):
+            self.num()
+        elif token.does_it_match(ID):
+            self.id()
+            self.idtail()
+        elif token.does_it_match(LPAR):
+            self.lpar()
+            self.expression()
+            self.rpar()
+        else:
+            raise Exception() #todo
+            self.error('Invalid prompt.')
+
+    def term(self):
+        self.factor()
+        self.star(self.mul_op, self.factor())
+
+    def optional_sign(self): self.optional(self.add_op)
+
+    def expression(self):
+        self.optional_sign()
+        self.term()
+        self.star(self.add_op, self.term)
+
+    def statements(self):
+        token = self.current_token
+        while token.recognized_string in [ID, PRINT, RETURN, IF, WHILE]:
+            self.statement()
+
+    def statement(self):
+        token = self.current_token
+        if token.does_it_match(ID):
+            self.assignment_stat()
+        elif token.does_it_match(PRINT):
+            self.print_stat()
+        elif token.does_it_match(RETURN):
+            self.return_stat()
+        elif token.does_it_match(IF):
+            self.if_stat()
+        elif token.does_it_match(WHILE):
+            self.while_stat()
+        else:
+            raise Exception()#todo somekind of error
+
+    def statement_body(self):
+        token = self.current_token
+        if token.recognized_string in [ID, PRINT, RETURN, IF, WHILE]:
+            self.statement
+        elif token.does_it_match(LBLCK):
+            self.lblck()
+            self.statements()
+            self.rblck()
+        else:
+            raise Exception("todo some kind of error")
+    
+    input_seq = sequence(int_, lpar, input_, lpar, rpar, rpar)
+
+    def assignment_stat(self):
+        self.id()
+        self.eqls()
+        self.lpar()
+        token = self.current_token()
+        if token.does_it_match(INT):
+            self.input_seq()
+        elif token.recognized_string in [NUM, ID, LPAR, ADD_OP]:
+            self.expression()
+        else:
+            raise NotImplementedError() #todo
+        self.smcln()
+    
+    print_stat = sequence(print_, lpar, expression, rpar, smcln)
+    return_stat = sequence(return_, lpar, expression, rpar, smcln)
+    
+    def else_part(self): self.optional(self.else_, self.cln, self.statement_body)
+
+    if_stat = sequence(
+        if_, lpar, condition, rpar, cln,
+            statement_body,
+        else_part
+    )
+    
+    while_stat = sequence(
+        while_, lpar, condition, rpar, cln,
+            statement_body
+    )    
+
+    def_main_function = sequence(
+        def_, id_main_function, lpar, rpar, cln,
+            lblck,
+                function_body,
+            rblck
+    )
+
+    def def_main_part(self): 
+        self.plus(self.def_main_function)
+    def_main_part.expected_value = def_.expected_value
+
+    main_function_call = sequence(id_main_function, lpar, rpar, smcln)
+
+    def main_function_calls(self):
+        self.plus(self.main_function_call)
+        
+    call_main_part = sequence(
+        if_, name_, eqls, main_, cln,
+            main_function_calls
+    )
+
+    startRule = sequence(def_main_part, call_main_part)
 
 
 def main(argv):
@@ -1112,14 +851,20 @@ def main(argv):
             lines.append(line.replace("\n", EOL))
 
     lex = LexicalAnalyzer(lines)
-    print(lex.lines)
+    print(f"\n\n{lines=}\n\n")
+    
+    
+
+    
     while not lex.is_end_of_file_reached():
         token: Token = lex.get_next_token()
         print(f"{token.recognized_string}, family: {token.family}, line: {token.line_number+1}, column: {token.column_number+1}")
 
+    lex.change_position(0,0)
+    print("\n\n")
     par = Parser(lex)
-
-
+    par.syntax_analyzer()
+    
 
 #todo customize this
 # cmdline = argparse.ArgumentParser(
@@ -1133,8 +878,6 @@ def main(argv):
 # cmdline.add_argument('-v', '--verbose',action='store_true')
 # args = cmdline.parse_args()
 # print(args.filename, args.count, args.verbose)
-
-
 
 if __name__ == "__main__":
     global lines

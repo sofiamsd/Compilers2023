@@ -80,9 +80,11 @@ def main_primes():
     #$ body of main_primes #$
     i = 2;
     while (i<=30):
+    #{
         if (isPrime(i)==1):
             print(i);
         i = i + 1;
+    #}
 #}
 
 
@@ -93,4 +95,7 @@ if __name__ == "__main__":
     main_factorial();
     main_fibonacci();
     main_countdigits();
-    main_primes();
+    main_primes(); 
+    
+    
+    
