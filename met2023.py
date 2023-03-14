@@ -632,7 +632,7 @@ class Parser:
     eof = terminal_symbol(EOF)
 
     num = terminal_symbol(NUM)
-    id = terminal_symbol(ID)
+    id_ = terminal_symbol(ID)
     add_op = terminal_symbol(ADD_OP)
     mul_op = terminal_symbol(MUL_OP)
     rel_op = terminal_symbol(REL_OP)
@@ -683,11 +683,11 @@ class Parser:
 
     def id_list(self):
         def star_comma_id():
-            return self.star(self.com, self.id)
-        self.optional(self.id, star_comma_id)
+            return self.star(self.com, self.id_)
+        self.optional(self.id_, star_comma_id)
 
     def_function = sequence(
-        def_, id, lpar, id_list, rpar,
+        def_, id_, lpar, id_list, rpar,
             lblck,
                 function_body,
             rblck

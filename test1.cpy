@@ -1,10 +1,18 @@
+if __name__ == "__main__":
+    #$ call of main functions #$
+    main_factorial();
+    main_fibonacci();
+    main_countdigits();
+    main_primes();
+
+    
 def main_factorial():
 #{
-    #$ declarations #$
+
     #declare x
     #declare i,fact
 
-    #$ body of main_factorial #$
+
     x = int(input());
     fact = 1;
     i = 1;
@@ -66,7 +74,7 @@ def main_primes():
             else:
                 return (0);
         #}
-        
+
         i = 2;
         while (i<x):
         #{
@@ -80,22 +88,9 @@ def main_primes():
     #$ body of main_primes #$
     i = 2;
     while (i<=30):
-    #{
         if (isPrime(i)==1):
             print(i);
         i = i + 1;
-    #}
 #}
 
 
-
-
-if __name__ == "__main__":
-    #$ call of main functions #$
-    main_factorial();
-    main_fibonacci();
-    main_countdigits();
-    main_primes(); 
-    
-    
-    
