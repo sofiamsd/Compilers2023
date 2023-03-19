@@ -1,7 +1,5 @@
-import argparse
+import sys
 from string import ascii_letters, digits, whitespace
-
-
 
 
 identifier_characters = ascii_letters + "_" + digits
@@ -102,9 +100,6 @@ class Error:
         position = f"line {line_number+1}, column {column_number+1}"
         message = self.format_message(position=position, **additional_args)
 
-        global lines;print(lines,line_number)#todo remove
-        # offending_line = lines[line_number] #todo remove
-
         print(f"--- Error:\n" + self.ident + message)
 
         if token_length is None: token_length = self.default_token_length
@@ -199,7 +194,10 @@ class Token:
 
     def length(self): return len(self.recognized_string)
 
-    def does_it_match(self, grammar_symbol): raise NotImplementedError
+    def does_it_match(self, *grammar_symbols): raise NotImplementedError
+    
+    def __repr__(self):
+        return f"{self.recognized_string}, family: {self.family}, line: {self.line_number+1}, column: {self.column_number+1}"
 
 class NumberToken(Token):
     def __init__(self, recognized_string, line_number, column_number):
@@ -210,7 +208,7 @@ class NumberToken(Token):
         if abs(num) >= 2**32:
             OutOfBoundsNumberError.at(self.line_number, self.column_number, number=num)
 
-    def does_it_match(self, grammar_symbol): return self.family == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.family in grammar_symbols
 
 class IdentifierToken(Token):
     def __init__(self, recognized_string, line_number, column_number):
@@ -226,9 +224,10 @@ class IdentifierToken(Token):
         if len(self.recognized_string) > 30:
             IdentifierExceeding30CharsError.at(self.line_number, self.column_number, self.length(), id=self.recognized_string)
 
-    def does_it_match(self, grammar_symbol): 
-        print(f"expected {self.family}, found {grammar_symbol}")
-        return self.family == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.family in grammar_symbols
+
+    def is_main_function(self): return "main_" == self.recognized_string[:5]
+
 
 class KeywordToken(Token):
     def __init__(self, recognized_string, line_number, column_number):
@@ -243,13 +242,13 @@ class KeywordToken(Token):
 
             NotAKeywordError.at(self.line_number, self.column_number, self.length())
 
-    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.recognized_string in grammar_symbols
 
 class AssignmentToken(Token):
     def __init__(self, line_number, column_number):
         super().__init__(ASGN, "assignment", line_number, column_number)
 
-    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.recognized_string in grammar_symbols
 
 class DelimiterToken(Token):
     def __init__(self, recognized_string, line_number, column_number):
@@ -259,7 +258,7 @@ class DelimiterToken(Token):
         if self.recognized_string in delimiter_chars: return
         raise ValueError(f"wrong initialization of {self.__class__.__name__}")
 
-    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.recognized_string in grammar_symbols
 
 class AddOperatorToken(Token):
     def __init__(self, recognized_string, line_number, column_number):
@@ -269,7 +268,7 @@ class AddOperatorToken(Token):
         if self.recognized_string in add_chars: return
         raise ValueError(f"wrong initialization of {self.__class__.__name__}")
 
-    def does_it_match(self, grammar_symbol): return self.family == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.family in grammar_symbols
 
 class MulOperatorToken(Token):
     def __init__(self, recognized_string, line_number, column_number):
@@ -281,7 +280,7 @@ class MulOperatorToken(Token):
             SingleDashOperatorError.at(self.line_number, self.column_number)
         raise ValueError(f"wrong initialization of {self.__class__.__name__}")
 
-    def does_it_match(self, grammar_symbol): return self.family == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.family in grammar_symbols
 
 class LogOperatorToken(Token):
     def __init__(self, recognized_string, line_number, column_number):
@@ -291,7 +290,7 @@ class LogOperatorToken(Token):
         if self.recognized_string in logical_operators: return
         raise ValueError(f"wrong initialization of {self.__class__.__name__}")
 
-    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.recognized_string in grammar_symbols
 
 class RelOperatorToken(Token):
     def __init__(self, recognized_string, line_number, column_number):
@@ -303,8 +302,9 @@ class RelOperatorToken(Token):
             IllegalExclamationMarkUsageError.at(self.line_number, self.column_number)
         raise ValueError(f"wrong initialization of {self.__class__.__name__}")
 
-    def does_it_match(self, grammar_symbol): 
-        return self.family == grammar_symbol or self.recognized_string == EQLS
+    def does_it_match(self, *grammar_symbols): return self.family in grammar_symbols
+
+    def is_eqls(self): return self.recognized_string == EQLS
 
 class GroupingSymbolToken(Token):
     def __init__(self, recognized_string, line_number, column_number):
@@ -319,13 +319,13 @@ class GroupingSymbolToken(Token):
             if "{" in self.recognized_string or "}" in self.recognized_string:
                 IllegalBraceUsageError.at(self.line_number, self.column_number, self.length())
 
-    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.recognized_string in grammar_symbols
 
 class EOFToken(Token):
     def __init__(self, line_number, column_number):
         super().__init__(EOF, "__internal__", line_number, column_number)
 
-    def does_it_match(self, grammar_symbol): return self.recognized_string == grammar_symbol
+    def does_it_match(self, *grammar_symbols): return self.recognized_string in grammar_symbols
 
 
 ################################## lexical analyzer ##########################################
@@ -555,55 +555,14 @@ class LexicalAnalyzer:
 
 
 
-
-def terminal_symbol(expected_value, error=SyntError):
-    def terminal_symbol_impl(par):
-        token = par.current_token
-        if token.does_it_match(expected_value):
-            print(f"token '{token.recognized_string}' @ {token.line_number,token.column_number} got captured as {expected_value}")#todo! remove
-            par.consume_token()
-        else:
-            error.at(
-                token.line_number, token.column_number, token.length(),
-                expected_value=expected_value, given_value=token.recognized_string
-            )
-    terminal_symbol_impl.expected_value = expected_value
-    return terminal_symbol_impl
-
-def sequence(*symbols):
-    def sequence_impl(par):
-        print("\nnew seq")
-        for symbol in symbols: 
-            token = par.current_token 
-            print(f"    found token '{token.recognized_string}' @ {token.line_number,token.column_number}")#todo! remove
-            print(symbol)
-            symbol(par)
-    sequence_impl.expected_value = symbols[0].expected_value
-    return sequence_impl
-
-# def star(expected_value, *symbols):
-#     def star_impl(par):
-#         while par.current_token.does_it_match(expected_value):
-#             for symbol in symbols: symbol(par)
-#     return star_impl
-
-# def optional(expected_value, *symbols, error=SyntError):
-#     def optional_impl(par):
-#         if par.current_token.does_it_match(expected_value):
-#             for symbol in symbols: symbol(par)
-#     return optional_impl
-    
 #################################### syntax analyzer #########################################
 # Parser : klash pou antlei lektikes monades apo ton lektiko analyth (Lex)
 
 class Parser:
     def __init__(self, lexical_analyzer):
         self.lexical_analyzer = lexical_analyzer
-        # self.lines = self.lexical_analyzer.lines
         self.current_token = self.lexical_analyzer.get_next_token()
         self.next_token = self.lexical_analyzer.get_next_token()
-
-    # def peek_next_token(self): return self.next_token
 
     def consume_token(self):
         self.current_token = self.next_token
@@ -613,232 +572,193 @@ class Parser:
         self.startRule()
         self.eof()
         print('Compilation completed successfully') #replace print with uniform print
-        
-    def star(self, expected_value=None, *symbols):
-        if expected_value is None: expected_value = symbols[0].expected_value
-        while self.current_token.does_it_match(expected_value):
-            for symbol in symbols: symbol()
-    
-    def plus(self, expected_value=None, *symbols):
-        if expected_value is None: expected_value = symbols[0].expected_value
-        for symbol in symbols: symbol()
-        self.star(expected_value, *symbols)
 
-    def optional(self, expected_value=None, *symbols):
-        if expected_value is None: expected_value = symbols[0].expected_value
-        if self.current_token.does_it_match(expected_value):
-            for symbol in symbols: symbol()
-
-    eof = terminal_symbol(EOF)
-
-    num = terminal_symbol(NUM)
-    id_ = terminal_symbol(ID)
-    add_op = terminal_symbol(ADD_OP)
-    mul_op = terminal_symbol(MUL_OP)
-    rel_op = terminal_symbol(REL_OP)
-
-    if_ = terminal_symbol(IF)
-    else_ = terminal_symbol(ELSE)
-    while_ = terminal_symbol(WHILE)
-    return_ = terminal_symbol(RETURN)
-    print_ = terminal_symbol(PRINT)
-    int_ = terminal_symbol(INT)
-    input_ = terminal_symbol(INPUT)
-    def_ = terminal_symbol(DEF)
-    declare_ = terminal_symbol(DECLARE)
-    name_ = terminal_symbol(__NAME__)
-    main_ = terminal_symbol(__MAIN__)
-
-    and_ = terminal_symbol(AND)
-    or_ = terminal_symbol(OR)
-    not_ = terminal_symbol(NOT)
-
-    lpar = terminal_symbol(LPAR)
-    rpar = terminal_symbol(RPAR)
-    lsqb = terminal_symbol(LSQB)
-    rsqb = terminal_symbol(RSQB)
-    lblck = terminal_symbol(LBLCK)
-    rblck = terminal_symbol(RBLCK)
-
-    cln = terminal_symbol(CLN)
-    smcln = terminal_symbol(SMCLN)
-    com = terminal_symbol(COM)
-
-    asgn = terminal_symbol(ASGN)
-
-    eqls = terminal_symbol(EQLS)
-
-    def id_main_function(self):
+    def expand_terminal_symbol(self, expected_value, other_conditions=[], error=SyntError):
         token = self.current_token
-        self.id()
-        if "main_" != token.recognized_string[:5]:
-            raise Exception() #todo message
+        if token.does_it_match(expected_value):
+            #print(f"~~> token '{token.recognized_string}' @ {token.line_number,token.column_number} got captured as {expected_value}")#todo! remove
+            self.consume_token()
+        else:
+            error.at(
+                token.line_number, token.column_number, token.length(),
+                expected_value=expected_value, given_value=token.recognized_string
+            )
+
+    def expand(self, symbol):
+        if isinstance(symbol, str):
+            # print("expanding:", symbol)
+            self.expand_terminal_symbol(symbol)
+        else: 
+            # print(f"expanding: {symbol.__name__}")
+            symbol(self)
+
+    def expand_sequence(self, *symbols):
+        # print("expanding sequence:", *symbols)
+        for symbol in symbols: self.expand(symbol)
+
+    def expand_optional(self, *symbols, expected_values=None):
+        # print("expanding optional:", *symbols)
+        # print(f"next token {self.current_token}")
+        if expected_values is None: expected_values = [symbols[0]]
+        # print(f"compaired against {expected_values=}")
+        for expected_value in expected_values:
+            if not isinstance(expected_value, str): raise TypeError(f"expected_value must be a string, but {expected_value} was found")
+        if self.current_token.does_it_match(*expected_values):
+            self.expand_sequence(*symbols)
+        # else:
+        #     print(self.current_token, f"din't match any of the {expected_values=}")
+
+    def expand_star(self, *symbols, expected_values=None):
+        # print("expanding star:", *symbols)
+        if expected_values is None: expected_values = [symbols[0]]
+        for expected_value in expected_values:
+            if not isinstance(expected_value, str): raise TypeError(f"expected_value must be a string, but {expected_value} was found")
+        while self.current_token.does_it_match(*expected_values):
+            self.expand_sequence(*symbols)
         
-    id_main_function.expected_value = ID             
+    def expand_plus(self, *symbols, expected_values=None):
+        # print("expanding plus:", *symbols)
+        self.expand_sequence(*symbols)
+        self.expand_star(*symbols, expected_values=expected_values)
+
+    def eof(self): self.expand(EOF)
+
+    def id_main_function(self): self.expand_terminal_symbol(ID) #add custom error
+
+    def eqls(self):
+        token = self.current_token
+        if token.is_eqls():
+            self.expand_terminal_symbol(REL_OP) #add error message
+        else:
+            raise Error() #add some kind of error
         
+
+    def startRule(self):
+        self.def_main_part()
+        self.call_main_part()
+
+    def def_main_part(self):
+        self.expand_plus(Parser.def_main_function, expected_values=[DEF])
+        
+    def def_main_function(self):
+        self.expand_sequence(DEF, ID, LPAR, RPAR, CLN, LBLCK, Parser.function_body, RBLCK)
+
     def function_body(self):
         self.declarations()
-        self.star(self.def_function)
+        self.expand_star(Parser.def_function, expected_values=[DEF])
         self.statements()
 
-    def id_list(self):
-        def star_comma_id():
-            return self.star(self.com, self.id_)
-        self.optional(self.id_, star_comma_id)
+    def def_function(self):
+        self.expand_sequence(DEF, ID, LPAR, Parser.id_list, RPAR, CLN, LBLCK, Parser.function_body, RBLCK)
 
-    def_function = sequence(
-        def_, id_, lpar, id_list, rpar,
-            lblck,
-                function_body,
-            rblck
-    )
-
-    declaration_line = sequence(declare_, id_list)
-
-    def declarations(self): self.star(self.declaration_line)        
-    
-    def condition(self):
-        self.bool_term()
-        self.star(self.or_, self.bool_term)
-
-    def bool_term(self):
-        self.bool_factor()
-        self.star(self.and_, self.bool_factor)
-
-    bracketed_condition = sequence(lsqb, condition, rsqb)
-
-    def bool_factor(self):
-        token = self.current_token
-        if token.does_it_match(NOT):
-            self.not_(); self.bracketed_condition()
-        elif token.does_it_match(LSQB):
-            self.bracketed_condition()
-        elif token.recognized_string in [NUM, ID, LPAR, ADD_OP]: #this is wrong
-            self.expression()
-            self.rel_op()
-            self.expression()
-        else:
-            raise NotImplementedError()#todo
+    def declarations(self):
+        self.expand_star(Parser.declaration_line, expected_values=[DECLARE])
         
-    def actual_par_list(self):
-        token = self.current_token
-        if token.recognized_string in [ADD_OP, NUM, LPAR, ID]:
-            self.expression()
-            self.star(self.com, self.expression)
+    def declaration_line(self):
+        self.expand_sequence(DECLARE, Parser.id_list)
 
-    def idtail(self):
-        self.optional(self.lpar, self.actual_par_list, self.rpar)
-
-    def factor(self):
-        token = self.current_token
-        if token.does_it_match(NUM):
-            self.num()
-        elif token.does_it_match(ID):
-            self.id()
-            self.idtail()
-        elif token.does_it_match(LPAR):
-            self.lpar()
-            self.expression()
-            self.rpar()
+    def statement(self):
+        # print("~~~statement switch")
+        if self.current_token.does_it_match(ID): self.assignment_stat()
+        elif self.current_token.does_it_match(PRINT): self.print_stat()
+        elif self.current_token.does_it_match(RETURN): self.return_stat()
+        elif self.current_token.does_it_match(IF): self.if_stat()
+        elif self.current_token.does_it_match(WHILE): self.while_stat()
         else:
-            raise Exception() #todo
-            self.error('Invalid prompt.')
+            raise Exception(f"statement failed: {self.current_token}")
+    
+    def statements(self):
+        self.expand_plus(Parser.statement, expected_values=[ID, PRINT, RETURN, IF, WHILE])
+    
+    def assignment_stat(self):
+        self.expand(ID)
+        self.expand(ASGN)
+        if self.current_token.does_it_match(ADD_OP, NUM, LPAR, ID):
+            self.expression()
+        elif self.current_token.does_it_match(INT):
+            self.expand_sequence(INT, LPAR, INPUT, LPAR, RPAR, RPAR)
+        else:
+            raise Exception(f"assignment_stat failed: {self.current_token}")
+        self.expand(SMCLN)
+        
+    def print_stat(self):
+        self.expand_sequence(PRINT, LPAR, Parser.expression, RPAR, SMCLN)
 
-    def term(self):
-        self.factor()
-        self.star(self.mul_op, self.factor())
+    def return_stat(self):
+        self.expand_sequence(RETURN, LPAR, Parser.expression, RPAR, SMCLN)
 
-    def optional_sign(self): self.optional(self.add_op)
+    def if_stat(self):
+        self.expand_sequence(IF, LPAR, Parser.condition, RPAR, CLN)
+        self.statement_body()
+        self.else_part()
 
+    def else_part(self):
+        self.expand_optional(ELSE, CLN, Parser.statement_body)
+        
+    def while_stat(self):
+        self.expand_sequence(WHILE, LPAR, Parser.condition, RPAR, CLN)
+        self.statement_body()
+
+    def statement_body(self):
+        # print("matching statement body")
+        if self.current_token.does_it_match(ID, PRINT, RETURN, IF, WHILE): self.statement()
+        elif self.current_token.does_it_match(LBLCK): self.expand_sequence(LBLCK, Parser.statements, RBLCK)
+        else:
+            raise Exception(f"statement_body failed: {self.current_token}")
+        
+    def id_list(self): 
+        if self.current_token.does_it_match(ID):
+            self.expand(ID)
+            self.expand_star(COM, ID)
+            
     def expression(self):
         self.optional_sign()
         self.term()
-        self.star(self.add_op, self.term)
+        self.expand_star(ADD_OP, Parser.term)
 
-    def statements(self):
-        token = self.current_token
-        while token.recognized_string in [ID, PRINT, RETURN, IF, WHILE]:
-            self.statement()
-
-    def statement(self):
-        token = self.current_token
-        if token.does_it_match(ID):
-            self.assignment_stat()
-        elif token.does_it_match(PRINT):
-            self.print_stat()
-        elif token.does_it_match(RETURN):
-            self.return_stat()
-        elif token.does_it_match(IF):
-            self.if_stat()
-        elif token.does_it_match(WHILE):
-            self.while_stat()
-        else:
-            raise Exception()#todo somekind of error
-
-    def statement_body(self):
-        token = self.current_token
-        if token.recognized_string in [ID, PRINT, RETURN, IF, WHILE]:
-            self.statement
-        elif token.does_it_match(LBLCK):
-            self.lblck()
-            self.statements()
-            self.rblck()
-        else:
-            raise Exception("todo some kind of error")
+    def term(self):
+        self.factor()
+        self.expand_star(MUL_OP, Parser.factor)
     
-    input_seq = sequence(int_, lpar, input_, lpar, rpar, rpar)
-
-    def assignment_stat(self):
-        self.id()
-        self.eqls()
-        self.lpar()
-        token = self.current_token()
-        if token.does_it_match(INT):
-            self.input_seq()
-        elif token.recognized_string in [NUM, ID, LPAR, ADD_OP]:
-            self.expression()
-        else:
-            raise NotImplementedError() #todo
-        self.smcln()
-    
-    print_stat = sequence(print_, lpar, expression, rpar, smcln)
-    return_stat = sequence(return_, lpar, expression, rpar, smcln)
-    
-    def else_part(self): self.optional(self.else_, self.cln, self.statement_body)
-
-    if_stat = sequence(
-        if_, lpar, condition, rpar, cln,
-            statement_body,
-        else_part
-    )
-    
-    while_stat = sequence(
-        while_, lpar, condition, rpar, cln,
-            statement_body
-    )    
-
-    def_main_function = sequence(
-        def_, id_main_function, lpar, rpar, cln,
-            lblck,
-                function_body,
-            rblck
-    )
-
-    def def_main_part(self): 
-        self.plus(self.def_main_function)
-    def_main_part.expected_value = def_.expected_value
-
-    main_function_call = sequence(id_main_function, lpar, rpar, smcln)
-
-    def main_function_calls(self):
-        self.plus(self.main_function_call)
+    def factor(self):
+        if self.current_token.does_it_match(NUM): self.expand(NUM)
+        elif self.current_token.does_it_match(LPAR): self.expand_sequence(LPAR, Parser.expression, RPAR)
+        elif self.current_token.does_it_match(ID): self.expand_sequence(ID, Parser.idtail)
+        else: raise Exception(f"factor failed: {self.current_token}")
+		
+    def idtail(self):
+        self.expand_optional(LPAR, Parser.actual_par_list, RPAR)
         
-    call_main_part = sequence(
-        if_, name_, eqls, main_, cln,
-            main_function_calls
-    )
+    def actual_par_list(self):
+        if self.current_token.does_it_match(ADD_OP, NUM, LPAR, ID): #todo what is an expression
+            self.expression()
+            self.expand_star(COM, Parser.expression)
+        
+    def optional_sign(self): self.expand_optional(ADD_OP)
+        
+    def condition(self):
+        self.bool_term()
+        self.expand_star(OR, Parser.bool_term)
 
-    startRule = sequence(def_main_part, call_main_part)
+    def sqr_condition(self):
+        self.expand_sequence(LSQB, Parser.condition, RSQB)
+
+    def bool_term(self):
+        self.bool_factor()
+        self.expand_star(AND, Parser.bool_factor)
+        
+    def bool_factor(self):
+        if self.current_token.does_it_match(NOT): self.expand_sequence(NOT, Parser.sqr_condition)
+        elif self.current_token.does_it_match(LSQB): self.sqr_condition()
+        elif self.current_token.does_it_match(ADD_OP, NUM, LPAR, ID): self.expand_sequence(Parser.expression, REL_OP, Parser.expression)
+        else:
+            raise Exception(f"bool factor failed: {self.current_token}")
+        
+    def call_main_part(self):
+        self.expand_sequence(IF, __NAME__, Parser.eqls, __MAIN__, CLN)
+        self.expand_plus(Parser.main_function_call, expected_values=[ID]) #todo test if ID is main_function?
+        
+    def main_function_call(self): self.expand_sequence(ID, LPAR, RPAR, SMCLN)
 
 
 def main(argv):
@@ -851,36 +771,20 @@ def main(argv):
             lines.append(line.replace("\n", EOL))
 
     lex = LexicalAnalyzer(lines)
-    print(f"\n\n{lines=}\n\n")
     
-    
-
-    
-    while not lex.is_end_of_file_reached():
-        token: Token = lex.get_next_token()
-        print(f"{token.recognized_string}, family: {token.family}, line: {token.line_number+1}, column: {token.column_number+1}")
+    while True:
+        token = lex.get_next_token()
+        if token.recognized_string == EOF: break
+        print(token)
 
     lex.change_position(0,0)
-    print("\n\n")
+    
     par = Parser(lex)
     par.syntax_analyzer()
     
 
-#todo customize this
-# cmdline = argparse.ArgumentParser(
-#                     prog = 'ProgramName',
-#                     description = 'What the program does',
-#                     epilog = 'Text at the bottom of help'
-# )
-
-# cmdline.add_argument('filename')           # positional argument
-# cmdline.add_argument('-c', '--count')      # option that takes a value
-# cmdline.add_argument('-v', '--verbose',action='store_true')
-# args = cmdline.parse_args()
-# print(args.filename, args.count, args.verbose)
 
 if __name__ == "__main__":
     global lines
     
-    import sys #remove this
     main(sys.argv)
