@@ -1,3 +1,11 @@
+########################################### Phase 1 ###########################################
+# Moisiadou Sofia AM:4446 cse84446 
+# Tsiaousi Thomai AM:4510 cse84510
+# How to run the code: python3 cutePy_4446_4510.py test.cpy
+# Choose one of the given tests : testError_comment.cpy, testError_brackets.cpy 
+# ,testRecursion.cpy,testCountdown.cpy ,testCalculateGrade.cpy
+###############################################################################################
+
 import sys
 from string import ascii_letters, digits, whitespace
 
@@ -75,6 +83,7 @@ token_families = [
 
 
 ########################################### Errors ###########################################
+### class Error : In this class we define the Errors that might appear during compilation. ###
 
 class Error:
     def __init__(self, *messages, token_length=1):
@@ -178,7 +187,7 @@ NoError.at = lambda *args, **kwargs: None
 
 
 
-
+### Recognise each token read from input cpy file and its family ###
 class Token:
     def __init__(self, recognized_string, family, line_number, column_number):
         self.recognized_string = recognized_string
@@ -328,7 +337,7 @@ class EOFToken(Token):
 
 
 ################################## lexical analyzer ##########################################
-
+### class LexicalAnalyzer : Reads tokens and returns the to SyntaxAnalyzer (Parser). ###
 class LexicalAnalyzer:
 
     def __init__(self, lines):
@@ -356,20 +365,20 @@ class LexicalAnalyzer:
         self.line_number = line
         self.column_number = column
 
-    def peek_next_character(self, offset=0):
+    def peek_next_character(self, offset=0, allow_illegal_chars=False):
         if self.is_end_of_file_reached(): return EOF
         if self.is_end_of_line_reached(offset): return EOL
 
         column = self.column_number + offset
         next_char = self.current_line()[column]
 
-        if next_char not in legal_characters:
+        if next_char not in legal_characters and not allow_illegal_chars:
             IllegalCharacterError.at(self.line_number, column, char=next_char)
 
         return next_char
 
-    def get_next_character(self):
-        next_character = self.peek_next_character()
+    def get_next_character(self, allow_illegal_chars=False):
+        next_character = self.peek_next_character(allow_illegal_chars=allow_illegal_chars)
         self.change_column()
         return next_character
 
@@ -391,7 +400,7 @@ class LexicalAnalyzer:
             self.consume_next_character()
 
             while not self.is_end_of_file_reached():
-                char = self.get_next_character()
+                char = self.get_next_character(allow_illegal_chars=True)
                 if char == "#":
                     char = self.get_next_character()
                     if char == "$": return
@@ -532,8 +541,7 @@ class LexicalAnalyzer:
 
 
 #################################### syntax analyzer #########################################
-# Parser : klash pou antlei lektikes monades apo ton lektiko analyth (Lex)
-
+### class Parser : Derives tokens from lexical analyzer (LexicalAnalyzer). ###
 class Parser:
     def __init__(self, lexical_analyzer):
         self.lexical_analyzer = lexical_analyzer
@@ -758,6 +766,9 @@ class Parser:
         
     def main_function_call(self): self.expand_sequence(Parser.id_main_function, LPAR, RPAR, SMCLN)
 
+
+
+######################################### Main Function ###############################################
 def main(argv):
     file_name = argv[1]
     global lines
