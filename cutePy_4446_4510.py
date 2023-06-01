@@ -1,13 +1,4 @@
-########################################### Phase 2 ###########################################
-# Moisiadou Sofia AM:4446 cse84446 
-# Tsiaousi Thomai AM:4510 cse84510
-# How to run the code: python3 cutePy_4446_4510.py test.cpy
-# Choose one of the given tests :grammar-test.cpy , testph2.cpy 
-# You can also choose from the previous tests : 
-# testError_comment.cpy, testError_brackets.cpy 
-# ,testRecursion.cpy,testCountdown.cpy ,testCalculateGrade.cpy
-###############################################################################################
-
+    ########################################### Final Phase ####################################
 from argparse import ArgumentParser, FileType
 from collections import namedtuple
 from contextlib import redirect_stdout
@@ -561,18 +552,21 @@ _ = "_"
 
 
 class IntermediateCodeGenerator:
-    def __init__(self):
+    def __init__(self,finalCodeGenerator):
         self.quads = dict()
         self.quad_counter = 1
         self.temp_counter = 0
+        self.fcg = finalCodeGenerator
     
     def genQuad(self, operator, operand1=_, operand2=_, operand3=_):
         label = self.nextQuad()
         self.quads[label] = Quad(label, operator, operand1, operand2, operand3)
         self.quad_counter += 1
-        
+
     def nextQuad(self): return str(self.quad_counter)
     
+    def getLastQuad(self): return list(self.quads.values())[-1]
+
     def currentTemp(self): return f"_T{self.temp_counter}"
     
     def newTemp(self):
@@ -651,7 +645,8 @@ class SymbolTableGenerator:
     def delete_scope(self, scope):
         del self.scopelst[-1]
         self.level -= 1
-        self.delete_entity(scope)
+        if(self.entitylst != []):
+            self.delete_entity(scope)
         self.write("DELETE SCOPE!     CURRENT LEVEL: ", self.level, " , ", "CURRENT SCOPE LIST: ", self.scopelst)
 
     def create_var_entity(self, name):
@@ -684,18 +679,87 @@ class SymbolTableGenerator:
         del self.entitylst[-1]
         self.offset = 0 
         self.write("DELETED ALL ENTITIES FROM: ", self.name)
+        
+    def error(self): pass #todo not found
 
-   
+
+#################################### final code ##############################################
+
+
+class FinalCodeGenerator:
+    def __init__(self, stg):
+        self.stg = stg
+        self.asmCommandlst = []
+        self.label=0
+
+    def produce(self, line):
+        self.asmCommandlst.append(line)
+
+    def find_entity(self, entity):
+        current_ent = entity
+        for x in self.stg.scopelst:
+            for y in x.stg.entitylst:
+                if y.name == entity:    
+                    current_ent = y
+        return current_ent
+
+
+    def find_entity_nest_level(self, entity,SymbolTableGenerator):
+        stg = SymbolTableGenerator
+        nest_lvl = 0
+        for x in self.stg.scopelst:
+            for y in x.stg.entitylst:
+                if y.name == entity:
+                    nest_lvl = self.stg.level
+        return nest_lvl
+
+    def gnlvcode(self, entity):
+        lvl = self.find_entity_nest_level(entity)
+        ent = self.find_entity(entity)
+        offset = self.stg.offset
+        self.produce("lw ,t0 ,-4(sp) ")
+
+        while lvl < 0:
+            self.produce("lw ,t0 -4(t0)")
+            lvl -= 1
+        self.produce("addi t0 t0 ",-offset)
+        
+
+    def loadvr(self, v, reg):
+        if v.isnumeric() or v[0] in ADD_OP:
+           self.produce("li " + str(reg) + ", " + str(v))
+           return False
+        self.produce("lw " + str(reg) +", (t0)") 
+
+    def storerv(self,v, reg):
+        self.produce("sw " + str(reg) + ", (t0)")
+
+    def genLabel(self, label=None): 
+        if label is None:
+            self.produce(f"L{self.label}:")
+            self.label += 1
+        else:
+            self.produce(f"{label}:") 
+
+    def write_to(self, file_name):
+        with open(file_name, "w") as asm_file:
+            for asmLine in self.asmCommandlst:
+                if asmLine[0] != "L": asm_file.write("\t")
+                asm_file.write(f"{asmLine}\n")
+        print_to_stdout('The final code generation was completed successfully.')
+        print(f"    {file_name} has been created.")
+        
 
 #################################### syntax analyzer #########################################
 ### class Parser : Derives tokens from lexical analyzer (LexicalAnalyzer). ###
 class Parser:
-    def __init__(self, lexical_analyzer, intermediate_code_generator, symbol_table_generator):
+    def __init__(self, lexical_analyzer, intermediate_code_generator, symbol_table_generator, final_code_generator):
         self.lexical_analyzer = lexical_analyzer
         self.current_token = self.lexical_analyzer.get_next_token()
         self.next_token = self.lexical_analyzer.get_next_token()
         self.icg = intermediate_code_generator
         self.stg = symbol_table_generator
+        self.fcg = final_code_generator
 
     def consume_token(self):#uses the current token and updates it  
         self.current_token = self.next_token
@@ -777,18 +841,32 @@ class Parser:
         self.icg.begin_block(program)
         self.call_main_part()
         self.icg.halt()
+        self.fcg.genLabel("Lexit")
+        self.fcg.produce("li, a0, 0 ")
+        self.fcg.produce("li, a7, 93 ")
+        self.fcg.produce("ecall ")
         self.icg.end_block(program)
+        self.fcg.genLabel()
+        self.fcg.produce("lw ra (sp)")
+        self.fcg.produce("jr ra ")
+        # end of program
+        
         self.eof()
 
     def def_main_part(self):
         """ def_main_part ::= (def_main_function)+ """
         self.expand_plus(Parser.def_main_function, expected_values=[DEF])
+        self.fcg.genLabel()
+        self.fcg.produce("j ,Lmain")
+        self.fcg.genLabel("Lmain")
+        self.fcg.produce("addi sp ,sp " + str(self.stg.offset))
         
     def def_main_function(self):
         """ def_main_function ::= def id_main_function(): function_body """
         main_function_name = self.next_token.recognized_string 
         self.expand_sequence(DEF, Parser.id_main_function, LPAR, RPAR, CLN)
         self.stg.create_scope(main_function_name)
+        #self.fcg.genLabel()
         self.function_body(main_function_name)
 
     def def_function(self):
@@ -804,8 +882,13 @@ class Parser:
         self.declarations()
         self.expand_star(Parser.def_function, expected_values=[DEF])
         self.icg.begin_block(function_name)
+        self.fcg.genLabel()
+        self.fcg.produce("sw ra (sp)")
         self.statements()
         self.icg.end_block(function_name)
+        self.fcg.genLabel()
+        self.fcg.produce("lw ra (sp)")
+        self.fcg.produce("jr ra ")
         self.stg.delete_scope(function_name)
         self.expand(RBLCK)
 
@@ -839,11 +922,16 @@ class Parser:
         var = self.expand(ID)
         self.expand(ASGN)
         if self.does_current_token_match(ADD_OP, NUM, LPAR, ID):
-            self.icg.assign( self.expression(), var )
+            self.icg.assign( self.expression(), var )       
             self.stg.create_var_entity(var)
         elif self.does_current_token_match(INT):
             self.expand_sequence(INT, LPAR, INPUT, LPAR, RPAR, RPAR)
             self.icg.in_(var)
+            quad = self.icg.getLastQuad()
+            self.fcg.genLabel()
+            self.fcg.produce("li, a7, 5")
+            self.fcg.produce("ecall")
+            self.fcg.storerv(quad.operand1, "a0")
             self.stg.create_var_entity(var)
         else:
             token = self.current_token
@@ -857,20 +945,40 @@ class Parser:
     def print_stat(self):
         """ print_stat ::= print(expression) """
         self.icg.out( self.expand_sequence(PRINT, LPAR, Parser.expression, RPAR, SMCLN)[2] )
+        quad=self.icg.getLastQuad()
+        self.fcg.genLabel()
+        self.fcg.loadvr(quad.operand1,"a0")
+        self.fcg.produce("li a7,1")
+        self.fcg.produce("ecall")
 
     def return_stat(self): 
         """ return_stat ::= return(expression) """
         self.icg.ret( self.expand_sequence(RETURN, LPAR, Parser.expression, RPAR, SMCLN)[2] )
+        quad = self.icg.getLastQuad()
+        asmcounter=self.icg.temp_counter
+        self.fcg.genLabel()
+        self.fcg.loadvr(str(asmcounter), ", t1")
+        self.fcg.produce("lw t0,-8(sp)")
+        self.fcg.produce("sw t1, (t0)")
+        self.fcg.produce("lw ra,(sp)")
+        self.fcg.produce("jr ra")
+        
 
     def if_stat(self): 
         condition = self.expand_sequence(IF, LPAR, Parser.condition, RPAR, CLN)[2]
+        condition_label = self.icg.nextQuad()
         self.icg.backpatch(condition[True], self.icg.nextQuad())
+        quad = self.icg.getLastQuad()
+        asmcounter=self.icg.temp_counter
         self.statement_body()
         if_list = [self.icg.nextQuad()]
         self.icg.jump()
+        self.fcg.genLabel()
+        self.fcg.produce("j L" + str(asmcounter + 1))
         self.icg.backpatch(condition[False], self.icg.nextQuad())
         self.else_part()
         self.icg.backpatch(if_list, self.icg.nextQuad())
+
 
     def else_part(self):
         self.expand_optional(ELSE, CLN, Parser.statement_body)
@@ -879,9 +987,15 @@ class Parser:
         condition_label = self.icg.nextQuad()
         condition = self.expand_sequence(WHILE, LPAR, Parser.condition, RPAR, CLN)[2]
         self.icg.backpatch(condition[True], self.icg.nextQuad())
+        quad = self.icg.getLastQuad()
+        asmcounter=self.icg.temp_counter
         self.statement_body()
         self.icg.jump(condition_label)
+        self.fcg.genLabel()
+        self.fcg.produce("j L" + str(asmcounter +1))
         self.icg.backpatch(condition[False], self.icg.nextQuad())
+
+
 
     def statement_body(self):
         if self.does_current_token_match(ID, PRINT, RETURN, IF, WHILE): self.statement()
@@ -911,12 +1025,28 @@ class Parser:
         if sign == "-":
             if t1.isnumeric(): t1 = sign + t1
             else: self.icg.genQuad("*","-1", t1, t1) 
+                
+                
         
         while self.does_current_token_match(ADD_OP):
             add_op = self.expand(ADD_OP)
             t2 = self.term()
             tmp = self.icg.newTemp()
             self.icg.genQuad(add_op, t1, t2, tmp)
+            quad = self.icg.getLastQuad()
+            asmcounter=self.icg.temp_counter
+            if quad.operator== "+" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("add t1, t1, t2" )
+                self.fcg.storerv(str(asmcounter), ", t1")      
+            if quad.operator== "-" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("sub t1, t1, t2" )
+                self.fcg.storerv(str(asmcounter), " t1")         
             t1 = tmp
             
         return t1
@@ -931,11 +1061,29 @@ class Parser:
             f2 = self.factor()
             tmp = self.icg.newTemp()
             self.icg.genQuad(mul_op, f1, f2, tmp)
+            quad = self.icg.getLastQuad()
+            asmcounter=self.icg.temp_counter
+            if quad.operator== "*" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("mul t1, t1, t2" )
+                self.fcg.storerv(str(asmcounter), " t1")
+            if quad.operator== "//" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("div t1, t1, t2" )
+                self.fcg.storerv(str(asmcounter), " t1")
             self.stg.create_temp_entity(tmp)
             f1 = tmp
         return f1
     
     def factor(self):
+        counter=1
+        count=12+(counter-1)*4
+        quad=self.icg.getLastQuad()
+        lst=self.fcg.asmCommandlst
         if self.does_current_token_match(NUM): return self.expand(NUM)
         elif self.does_current_token_match(LPAR): return self.expand_sequence(LPAR, Parser.expression, RPAR)[1]
         elif self.does_current_token_match(ID):
@@ -948,18 +1096,29 @@ class Parser:
                 for parameter in parameters:
                     self.icg.par_cv(parameter)
                     self.stg.create_par_entity(parameter)
+                    if counter >0 :
+                        self.fcg.genLabel()
+                    if quad.operator== "cv":
+                        self.fcg.loadvr(quad.operand1 ,"t0")
+                        self.fcg.produce("addi t0 ,sp,-" + str(count))
+                        self.fcg.produce("sw t0 ,-" + str(count)+"(fp)")
+                    counter +=1
+                count +=4 
                 tmp = self.icg.newTemp()
                 self.stg.create_temp_entity(tmp)
                 self.icg.par_ret(tmp)
                 self.icg.call(id)
+                self.fcg.produce("addi t0 , sp ,-" +str(count))
+                self.fcg.produce("sw t0 , -8(fp)")
                 return tmp
+        
         else: 
             token = self.current_token
             SyntError.at(
                 token.line_number, token.column_number, token.length(), 
                 expected_value=f"{NUM}/{ID}/{LPAR}",
-                given_value=token.recognized_string
-            )
+                given_value=token.recognized_string)
+
 
         
     def actual_par_list(self):
@@ -994,6 +1153,7 @@ class Parser:
         return self.expand_sequence(LSQB, Parser.condition, RSQB)[1]
         
     def bool_factor(self): 
+        condition_label = self.icg.nextQuad()
         if self.does_current_token_match(NOT): 
             tmp = self.expand_sequence(NOT, Parser.sqr_condition)[1]
             return tmp[True], tmp[False]
@@ -1003,8 +1163,42 @@ class Parser:
             exp1, rel_op, exp2 = self.expand_sequence(Parser.expression, REL_OP, Parser.expression)
             true_list = [self.icg.nextQuad()]
             self.icg.genQuad(rel_op, exp1, exp2)
+            quad = self.icg.getLastQuad()
+            asmcounter=self.icg.temp_counter
+            if quad.operator== "=" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("beq t1, t2, L" + str(asmcounter))
+            if quad.operator== "!=" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("bne t1, t2, L" + str(asmcounter))
+            if quad.operator== ">" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("bgt t1, t2, L" + str(asmcounter))
+            if quad.operator== "<" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("blt t1, t2, L" + str(asmcounter))
+            if quad.operator== ">=" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("bge t1, t2, L" +str(asmcounter))
+            if quad.operator== "<=" :
+                self.fcg.genLabel()
+                self.fcg.loadvr(quad.operand1, " t1")
+                self.fcg.loadvr(quad.operand2, " t2")
+                self.fcg.produce("ble t1, t2, L" + str(asmcounter))
             false_list = [self.icg.nextQuad()]
-            self.icg.jump()
+            self.icg.jump(true_list)
+            self.fcg.genLabel()
+            self.fcg.produce("j L" + str(asmcounter + 1))
             return false_list, true_list
         else:
             token = self.current_token
@@ -1024,7 +1218,6 @@ class Parser:
         main_function_name = self.expand_sequence(Parser.id_main_function, LPAR, RPAR, SMCLN)[0]
         self.icg.call(main_function_name) # it gets called without parameters and it doesn't return anything
         
-
 
 ######################################### Main Function ###############################################
 def main():
@@ -1048,18 +1241,24 @@ def main():
         
     file_name = args.file.name.split(".", 1)[0]
 
+
     lex = LexicalAnalyzer(lines)
     lex.lexical_analyzer(print_results=args.lex)
         
-    icg = IntermediateCodeGenerator()
+
     stg = SymbolTableGenerator(f"{file_name}.symb")
+    fcg = FinalCodeGenerator(stg)
+    icg = IntermediateCodeGenerator(fcg)
     
-    par = Parser(lex, icg, stg)
+    par = Parser(lex, icg, stg, fcg)
     par.syntax_analyzer()
     
     icg.write_to(f"{file_name}.int")
-
+    
     stg.print_report_message()
+    
+    fcg.write_to(f"{file_name}.asm")
+
 
     print_to_stdout('The compilation was completed successfully.') 
     
